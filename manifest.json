@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "시아시간",
+  "description": "SIA groupware의 인사/근태 > 근태현황 > 근무시간집계현황에서 추가적인 근무정보를 제공해줘요.",
+  "version": "1.0",
+  "permissions": [
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://gw.si-analytics.ai/gw/bizbox.do"
+  ],
+  "background": {
+    "service_worker": "scripts/background.js"
+  },
+  "action": {
+    "default_popup": "scripts/index.html",
+    "default_icon": {
+      "16": "images/icon-16.png",
+      "32": "images/icon-32.png",
+      "48": "images/icon-48.png",
+      "128": "images/icon-128.png"
+    }
+  },
+  "icons": {
+    "16": "images/icon-16.png",
+    "32": "images/icon-32.png",
+    "48": "images/icon-48.png",
+    "128": "images/icon-128.png"
+  }
+}
