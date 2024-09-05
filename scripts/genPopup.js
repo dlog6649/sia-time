@@ -2,6 +2,20 @@
   const popupId = "sia-time-popup-fj23CzEq"
   const title = "시아시간"
 
+  const convertSignificantToHours = (significant) => {
+    const dayRegexp = /(연차|휴가|공가|병가|휴직|결혼|회갑|출산|사망|탈상|예비군|훈련소)/g
+    if (dayRegexp.test(significant) || significant === "기타") {
+      return 8
+    }
+
+    const halfDayRegexp = /(반차|건강검진|백신접종|기타\(반일\))/g
+    if (halfDayRegexp.test(significant)) {
+      return 4
+    }
+
+    return 0
+  }
+
   const genContent = () => {
     const totalWfhCount = 5
 
@@ -28,9 +42,14 @@
     const startOfToday = new Date()
     startOfToday.setHours(0, 0, 0, 0)
 
-    const remainingWorkingDaysCount = workingDayTrs
-      .map((tr) => new Date(tr.childNodes[dateIdx]?.innerText))
-      .filter((d) => d.getTime() >= startOfToday.getTime()).length
+    const remainingWorkingDayTrs = workingDayTrs.filter((tr) => new Date(tr.childNodes[dateIdx]?.innerText).getTime() >= startOfToday.getTime())
+
+    const subtractedMinsInLackTime = remainingWorkingDayTrs.reduce((acc, tr) => {
+      const significant = tr.childNodes[significantIdx]?.innerText
+      return acc + convertSignificantToHours(significant)
+    }, 0) * 60
+
+    const remainingWorkingDaysCount = remainingWorkingDayTrs.length
 
     const usedWfhCount = workingDayTrs.filter((tr) => tr.childNodes[significantIdx]?.innerText === "재택근무").length
     const remainingWfhCount = totalWfhCount - usedWfhCount
@@ -47,7 +66,7 @@
       return `${hours} ${mins}`.trim()
     }
 
-    const savingMins = totalRemainingMins - lackMins
+    const savingMins = totalRemainingMins - lackMins - subtractedMinsInLackTime
     const uSavingMins = Math.abs(savingMins)
     const savingH = parseInt(uSavingMins / 60)
     const savingM = uSavingMins % 60
