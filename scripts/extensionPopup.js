@@ -6,6 +6,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       files: ["scripts/genPopup.js"],
     })
   } catch (e) {
+    console.error(e)
+
     const content = document.getElementById("content")
     if (content) {
       content.innerHTML = `<span style="color: red;">에러 발생!</span>\n<code>message: ${e?.message}</code>`
