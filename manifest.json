@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "시아시간",
-  "description": "SIA groupware의 인사/근태 > 근태현황 > 근무시간집계현황에서 추가적인 근무정보를 제공해줘요.",
-  "version": "1.0",
+  "description": "그룹웨어에 추가적인 근태정보 제공",
+  "version": "1.1",
   "permissions": [
     "scripting"
   ],
