@@ -1,6 +1,8 @@
 (() => {
-  const popupId = "sia-time-popup-fj23CzEq"
   const title = "시아시간"
+  const popupId = "sia-time-popup-fj23CzEq"
+  // 매달 제공되는 재택근무일수
+  const wfhCountPerMonth = 2
 
   const convertSignificantToHours = (significant) => {
     const dayRegexp = /(재택근무|연차|휴가|공가|병가|휴직|결혼|회갑|출산|사망|탈상|예비군|훈련소)/g
@@ -17,8 +19,6 @@
   }
 
   const genContent = () => {
-    const totalWfhCount = 5
-
     const oldPopup = document.getElementById(popupId)
     if (oldPopup) {
       document.body.removeChild(oldPopup)
@@ -52,7 +52,7 @@
     const remainingWorkingDaysCount = remainingWorkingDayTrs.length
 
     const usedWfhCount = workingDayTrs.filter((tr) => tr.childNodes[significantIdx]?.innerText === "재택근무").length
-    const remainingWfhCount = totalWfhCount - usedWfhCount
+    const remainingWfhCount = wfhCountPerMonth - usedWfhCount
 
     const pageDate = new Date(bodyTrs[0]?.childNodes[dateIdx]?.innerText)
     const dateText = `${pageDate.getFullYear()}년 ${pageDate.getMonth() + 1}월`
