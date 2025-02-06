@@ -3,7 +3,7 @@
   const title = "시아시간"
 
   const convertSignificantToHours = (significant) => {
-    const dayRegexp = /(재택근무|연차|휴가|공가|병가|휴직|결혼|회갑|출산|사망|탈상|예비군|훈련소|휴일대체)/g
+    const dayRegexp = /(재택근무|연차|휴가|공가|병가|휴직|결혼|회갑|출산|사망|탈상|예비군|훈련소)/g
     if (dayRegexp.test(significant) || significant === "기타") {
       return 8
     }
