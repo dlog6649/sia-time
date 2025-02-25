@@ -45,8 +45,10 @@
     const remainingWorkingDayTrs = workingDayTrs.filter((tr) => new Date(tr.childNodes[dateIdx]?.innerText).getTime() >= startOfToday.getTime())
 
     const subtractedMinsInLackTime = remainingWorkingDayTrs.reduce((acc, tr) => {
-      const significant = tr.childNodes[significantIdx]?.innerText
-      return acc + convertSignificantToHours(significant)
+      const significants = tr.childNodes[significantIdx]?.innerText.split("\n")
+      const hours = significants.reduce((acc, sig) => (acc + convertSignificantToHours(sig)), 0)
+
+      return acc + hours
     }, 0) * 60
 
     const remainingWorkingDaysCount = remainingWorkingDayTrs.length
