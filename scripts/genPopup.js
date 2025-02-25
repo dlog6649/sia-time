@@ -152,12 +152,13 @@
               </svg>
               <div style="font-size: 18px; font-weight: 700; line-height: 28px;">${dateText}</div>
             </time>
-            <div style="display: grid; grid-template-rows: repeat(5, minmax(32px, auto)); grid-template-columns: 106px 1fr; border-top: 1px solid #CCC; border-left: 1px solid #CCC; font-size: 14px;">
+            <div style="display: grid; grid-template-rows: repeat(6, minmax(32px, auto)); grid-template-columns: 106px 1fr; border-top: 1px solid #CCC; border-left: 1px solid #CCC; font-size: 14px;">
               <div ${thProps}>총 근무일</div><div ${tdProps}>${totalWorkingDaysCount}일</div>
               <div ${thProps}>남은 근무일</div><div ${tdProps}>${remainingWorkingDaysCount}일</div>
               <div ${thProps}>남은 재택근무</div><div ${tdProps}>${remainingWfhCount}일</div>
               <div ${thProps}>내 현황</div><div ${tdProps}>${myStatus}</div>
               <div ${thProps}>요약</div><div ${tdProps}>${summary}</div>
+              <div ${thProps}>미달시간</div><div ${tdProps}>총 근무시간이 ${toTimeText(lackH, lackM)} 남았어요.</div>
             </div>
           </main>
         </div>
