@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "시아시간",
   "description": "그룹웨어에 추가적인 근태정보 제공",
-  "version": "1.4",
+  "version": "1.5",
   "permissions": [
     "scripting"
   ],
