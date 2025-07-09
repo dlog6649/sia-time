@@ -173,7 +173,15 @@
               <div ${thProps}>내 현황</div><div ${tdProps}>${myStatus}</div>
               <div ${thProps}>요약</div><div ${tdProps}>${summary}</div>
               <div ${thProps}>미달시간</div><div ${tdProps}>총 근무시간이 ${toTimeText(lackH, lackM)} 남았어요.</div>
-              <div ${thProps}>창립기념일</div><div ${tdProps}>SIA 창립기념일인 7월 2일은 쉬는 날이에요.</div>
+              ${(() => {
+                const foundationDay = new Date()
+                foundationDay.setMonth(6, 2)
+        
+                if (startOfToday.getTime() <= foundationDay.getTime()) {
+                  return `<div ${thProps}>창립기념일</div><div ${tdProps}>SIA 창립기념일인 7월 2일은 쉬는 날이에요.</div>`
+                }
+                return ''
+              })()}
             </div>
           </main>
         </div>
