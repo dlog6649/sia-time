@@ -17,7 +17,28 @@
       return 4 * 60
     }
 
+    if (significant.startsWith('출장')) {
+      return getBusinessTripMinutes(significant)
+    }
+
     return 0
+  }
+
+  const getBusinessTripMinutes = (text) => {
+    const match = text.match(/(\d{1,2}):(\d{2})\s*~\s*(\d{1,2}):(\d{2})/);
+    if (!match) return 0;
+
+    const [, sh, sm, eh, em] = match.map(Number);
+    const start = sh * 60 + sm;
+    const end = eh * 60 + em;
+    const duration = end - start;
+
+    // 점심시간 12:00 ~ 13:00 빼기
+    const lunchStart = 12 * 60;
+    const lunchEnd = 13 * 60;
+    const overlap = Math.max(0, Math.min(end, lunchEnd) - Math.max(start, lunchStart));
+
+    return duration - overlap
   }
 
   const startOfToday = () => {
