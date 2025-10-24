@@ -1,4 +1,8 @@
 (() => {
+  const MINUTES_PER_HOUR = 60
+  const WORKING_HOURS_PER_DAY = 8
+  const HALF_WORKING_HOURS_PER_DAY = WORKING_HOURS_PER_DAY * .5
+
   const title = '시아시간'
   const popupId = `sia-time-popup-uxWd901md`
   const closeBtnId = `sia-time-popup-close-btn-Idn1Zdk3`
@@ -9,12 +13,12 @@
     const dayRegexp =
       /(재택근무|연차|휴가|공가|병가|휴직|결혼|회갑|출산|사망|탈상|예비군|훈련소)/g
     if (dayRegexp.test(significant) || significant === '기타') {
-      return 8 * 60
+      return WORKING_HOURS_PER_DAY * MINUTES_PER_HOUR
     }
 
     const halfDayRegexp = /(반차|건강검진|백신접종|기타\(반일\))/g
     if (halfDayRegexp.test(significant)) {
-      return 4 * 60
+      return HALF_WORKING_HOURS_PER_DAY * MINUTES_PER_HOUR
     }
 
     if (significant.startsWith('출장')) {
@@ -29,13 +33,13 @@
     if (!match) return 0;
 
     const [, sh, sm, eh, em] = match.map(Number);
-    const start = sh * 60 + sm;
-    const end = eh * 60 + em;
+    const start = sh * MINUTES_PER_HOUR + sm;
+    const end = eh * MINUTES_PER_HOUR + em;
     const duration = end - start;
 
     // 점심시간 12:00 ~ 13:00 빼기
-    const lunchStart = 12 * 60;
-    const lunchEnd = 13 * 60;
+    const lunchStart = 12 * MINUTES_PER_HOUR;
+    const lunchEnd = 13 * MINUTES_PER_HOUR;
     const overlap = Math.max(0, Math.min(end, lunchEnd) - Math.max(start, lunchStart));
 
     return duration - overlap
@@ -57,7 +61,7 @@
 
   const timeText = (h, m) => {
     const hours = h > 0 ? `${h}시간` : ''
-    const mins = m > 0 ? `${m}분` : ''
+    const mins = m > 0 ? `${Math.round(m)}분` : ''
     return `${hours} ${mins}`.trim()
   }
 
@@ -88,7 +92,7 @@
         ?.innerText ?? ''
     const [lackHours, lackMins] = lackTimeTxt.split(':').map(Number)
 
-    return { lackMins: lackMins, lackHours: lackHours, totalLackMins: lackHours * 60 + lackMins }
+    return { lackMins: lackMins, lackHours: lackHours, totalLackMins: lackHours * MINUTES_PER_HOUR + lackMins }
   }
 
   const currentPageDate = () => {
@@ -97,11 +101,14 @@
     return new Date(bodyTrs[0]?.childNodes[dateIndex()]?.innerText)
   }
 
+  const parseMinutes = (mins) => {
+    return { hours: Math.floor(mins / MINUTES_PER_HOUR), minutes: mins % MINUTES_PER_HOUR }
+  }
+
   const summaryText = () => {
-    const remainingMins = totalRemainingMins() - getSavingMins()
-    const minsPerDay = Math.abs(remainingMins) / remainingWorkingDaysCount()
-    const hours = parseInt(minsPerDay / 60)
-    const minutes = Math.round(minsPerDay % 60)
+    const remainingMins = totalRemainingMins() - getTotalSavingMins()
+    const remainingMinsPerDay = Math.abs(remainingMins) / remainingWorkingDaysCount()
+    const { hours, minutes } = parseMinutes(remainingMinsPerDay)
     return remainingWorkingDaysCount() === 0
       ? '이달의 근무가 끝났어요.'
       : remainingMins < 0
@@ -110,20 +117,18 @@
   }
 
   const myStatusText = () => {
-    const savingMins = getSavingMins()
-    const uSavingMins = Math.abs(savingMins)
-    const savingH = parseInt(uSavingMins / 60)
-    const savingM = uSavingMins % 60
-    return savingH + savingM === 0
+    const totalSavingMins = getTotalSavingMins()
+    const { hours, minutes } = parseMinutes(Math.abs(totalSavingMins))
+    return totalSavingMins === 0
         ? '저축한 시간이 없어요.'
-        : `${timeText(savingH, savingM)} ${
-          savingMins < 0
+        : `${timeText(hours, minutes)} ${
+          totalSavingMins < 0
             ? "<span style='color: #EF2B2A; font-weight: 700;'>대출</span>"
             : "<span style='color: #487AFF; font-weight: 700;'>저축</span>"
         }했어요.`
   }
 
-  const getSavingMins = () => {
+  const getTotalSavingMins = () => {
     const subtractedMinsInLackTime = remainingWorkingDayTrs().reduce((acc, tr) => {
         const significants = tr.childNodes[significantIndex()]?.innerText.split('\n')
         const mins = significants.reduce((acc, sig) => acc + convertSignificantToMins(sig), 0)
@@ -144,7 +149,7 @@
   }
 
   const totalRemainingMins = () => {
-    return remainingWorkingDaysCount() * 8 * 60
+    return remainingWorkingDaysCount() * WORKING_HOURS_PER_DAY * MINUTES_PER_HOUR
   }
 
   const usedWfhCount = () => {
@@ -182,7 +187,10 @@
   }
 
   const renderRow = ({ title, content }) => {
-    return `<div style="background-color: #F5F5F5; display: flex; align-items: center; padding: 4px 8px; border-right: 1px solid #CCC; border-bottom: 1px solid #CCC;">${title}</div><div style="display: flex; align-items: center; padding: 4px 8px; color: #616161; border-right: 1px solid #CCC; border-bottom: 1px solid #CCC; white-space: pre-wrap; word-break: break-word;">${content}</div>`
+    return `<div style="background-color: #F5F5F5; display: flex; align-items: center; padding: 4px 8px; border-right: 1px solid #CCC; border-bottom: 1px solid #CCC;"
+            >${title}</div>
+            <div style="display: flex; align-items: center; padding: 4px 8px; color: #616161; border-right: 1px solid #CCC; border-bottom: 1px solid #CCC; white-space: pre-wrap; word-break: break-word;"
+            >${content}</div>`
   }
 
   const clearOldPopup = () => {
@@ -276,6 +284,7 @@
   const genPopupWhenReady = () => {
     const retry = 100
     let triedCount = 0
+    const TOTAL_LOADING_UI_COUNT = 4
 
     const intervalId = setInterval(() => {
       if (triedCount === retry) {
@@ -302,7 +311,7 @@
           ?.contentDocument.querySelectorAll('.PUDD-UI-loading') ?? []),
       ]
 
-      if (loadings.length !== 4 || !loadings.every((l) => l.style.display === 'none')) {
+      if (loadings.length !== TOTAL_LOADING_UI_COUNT || !loadings.every((l) => l.style.display === 'none')) {
         triedCount++
         return
       }
