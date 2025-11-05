@@ -2,6 +2,12 @@
   const MINUTES_PER_HOUR = 60
   const WORKING_HOURS_PER_DAY = 8
   const HALF_WORKING_HOURS_PER_DAY = WORKING_HOURS_PER_DAY * .5
+  const WORKING_START_HOUR = 8
+  const WORKING_END_HOUR = 22
+  const LUNCH_START_HOUR = 12
+  const LUNCH_END_HOUR = 13
+  const CORE_TIME_START_HOUR = 10
+  const CORE_TIME_END_HOUR = 15
 
   const title = '시아시간'
   const popupId = `sia-time-popup-uxWd901md`
@@ -29,31 +35,38 @@
   }
 
   const getBusinessTripMinutes = (text) => {
-    const match = text.match(/(\d{1,2}):(\d{2})\s*~\s*(\d{1,2}):(\d{2})/);
-    if (!match) return 0;
+    const match = text.match(/(\d{1,2}):(\d{2})\s*~\s*(\d{1,2}):(\d{2})/)
+    if (!match) {
+      return 0
+    }
 
-    const [, sh, sm, eh, em] = match.map(Number);
-    const start = sh * MINUTES_PER_HOUR + sm;
-    const end = eh * MINUTES_PER_HOUR + em;
-    const duration = end - start;
+    const [, sh, sm, eh, em] = match.map(Number)
+    const start = sh * MINUTES_PER_HOUR + sm
+    const end = eh * MINUTES_PER_HOUR + em
+    const duration = end - start
 
-    // 점심시간 12:00 ~ 13:00 빼기
-    const lunchStart = 12 * MINUTES_PER_HOUR;
-    const lunchEnd = 13 * MINUTES_PER_HOUR;
-    const overlap = Math.max(0, Math.min(end, lunchEnd) - Math.max(start, lunchStart));
+    const lunchStart = LUNCH_START_HOUR * MINUTES_PER_HOUR
+    const lunchEnd = LUNCH_END_HOUR * MINUTES_PER_HOUR
+    const overlap = Math.max(0, Math.min(end, lunchEnd) - Math.max(start, lunchStart))
 
     return duration - overlap
   }
 
-  const startOfToday = () => {
-    const date = new Date()
+  const endOfMonth = (date = new Date()) => {
+    const y = date.getFullYear()
+    const m = date.getMonth()
+    const end = new Date(y, m + 1, 0)
+    end.setHours(23, 59, 59, 999)
+    return end
+  }
+
+  const startOfToday = (date = new Date()) => {
     date.setHours(0, 0, 0, 0)
     return date
   }
 
   // 창립기념일 7/2
-  const foundationDay = () => {
-    const date = new Date()
+  const foundationDay = (date = new Date()) => {
     date.setMonth(6, 2)
     date.setHours(0, 0, 0, 0)
     return date
@@ -82,6 +95,7 @@
       ?.contentDocument.querySelector('#grid3')
   }
 
+  // 미달시간
   const lackTimes = () => {
     const summaryTable = summaryTableOrNull()
     const lackTimeIdx = [
@@ -95,6 +109,30 @@
     return { lackMins: lackMins, lackHours: lackHours, totalLackMins: lackHours * MINUTES_PER_HOUR + lackMins }
   }
 
+  // 오늘 출근한 시간
+  const clockInTimeOfTodayOrNull = () => {
+    const todayTr = workingDayTrs().find((tr) => {
+      const date = new Date(tr.childNodes[dateIndex()]?.innerText)
+      const now = new Date()
+      return (
+        date.getFullYear() === now.getFullYear() &&
+        date.getMonth() === now.getMonth() &&
+        date.getDate() === now.getDate()
+      )
+    })
+    const clockInTimeText = todayTr?.childNodes[clockInTimeIndex()]?.innerText
+
+    if (!clockInTimeText) {
+      return null
+    }
+
+    const [h, m] = clockInTimeText.split(':').map(Number)
+    const now = new Date()
+    now.setHours(h, m, 0, 0)
+
+    return now
+  }
+
   const currentPageDate = () => {
     const detailTable = detailTableOrNull()
     const bodyTrs = [...(detailTable?.querySelector('tbody')?.querySelectorAll('tr') ?? [])]
@@ -105,27 +143,68 @@
     return { hours: Math.floor(mins / MINUTES_PER_HOUR), minutes: mins % MINUTES_PER_HOUR }
   }
 
-  const summaryText = () => {
-    const remainingMins = totalRemainingMins() - getTotalSavingMins()
-    const remainingMinsPerDay = Math.abs(remainingMins) / remainingWorkingDaysCount()
-    const { hours, minutes } = parseMinutes(remainingMinsPerDay)
-    return remainingWorkingDaysCount() === 0
-      ? '이달의 근무가 끝났어요.'
-      : remainingMins < 0
-        ? '미달시간이 없어요.'
-        : `앞으로 하루에 ${timeText(hours, minutes)}씩 근무하면 돼요.`
+  const myStatusLabel = () => {
+    const totalSavingMins = getTotalSavingMins()
+    if (totalSavingMins === 0) {
+      return '저축한 시간이 없어요.'
+    }
+
+    const { hours, minutes } = parseMinutes(Math.abs(totalSavingMins))
+    return `${timeText(hours, minutes)} ${
+      totalSavingMins < 0
+        ? "<span style='color: #EF2B2A; font-weight: 700;'>대출</span>"
+        : "<span style='color: #487AFF; font-weight: 700;'>저축</span>"
+    }했어요.`
   }
 
-  const myStatusText = () => {
-    const totalSavingMins = getTotalSavingMins()
-    const { hours, minutes } = parseMinutes(Math.abs(totalSavingMins))
-    return totalSavingMins === 0
-        ? '저축한 시간이 없어요.'
-        : `${timeText(hours, minutes)} ${
-          totalSavingMins < 0
-            ? "<span style='color: #EF2B2A; font-weight: 700;'>대출</span>"
-            : "<span style='color: #487AFF; font-weight: 700;'>저축</span>"
-        }했어요.`
+  const summaryLabel = () => {
+    if (remainingWorkingDaysCount() === 0) {
+      return '이달의 근무가 끝났어요.'
+    } else if (remainingWorkingDaysCount() === 1) {
+      const label = summaryLabelForLastDayOfMonth()
+      if (label) {
+        return label
+      }
+    }
+
+    const remainingMins = totalRemainingMins() - getTotalSavingMins()
+    if (remainingMins < 0) {
+      return '남은 근무시간이 없어요.'
+    }
+
+    const remainingMinsPerDay = Math.abs(remainingMins) / remainingWorkingDaysCount()
+    const { hours, minutes } = parseMinutes(remainingMinsPerDay)
+
+    return `앞으로 하루에 ${timeText(hours, minutes)}씩 근무하면 돼요.`
+  }
+
+  const lackTimeLabel = () => {
+    const { lackHours, lackMins } = lackTimes()
+    const timetxt = timeText(lackHours, lackMins)
+    return !timetxt ? '남은 근무시간이 없어요.' : `총 근무시간이 ${timetxt} 남았어요.`
+  }
+
+  const summaryLabelForLastDayOfMonth = () => {
+    const clockInTime = clockInTimeOfTodayOrNull()
+    if (!clockInTime) {
+      return ''
+    }
+
+    const clockInMins = clockInTime.getHours() * MINUTES_PER_HOUR + clockInTime.getMinutes()
+    const startMins = Math.max(clockInMins, WORKING_START_HOUR * MINUTES_PER_HOUR)
+    const lunchStart = LUNCH_START_HOUR * MINUTES_PER_HOUR
+    const lunchEnd = LUNCH_END_HOUR * MINUTES_PER_HOUR
+    const minsForAdd = Math.max(0, lunchEnd - Math.max(startMins, lunchStart))
+
+    const clockOutMins = startMins + minsForAdd + lackTimes().totalLackMins
+    const clampedClockOutMins = Math.max(clockOutMins, CORE_TIME_END_HOUR * MINUTES_PER_HOUR)
+    const { hours, minutes } = parseMinutes(clampedClockOutMins)
+
+    return `${formatTime(hours, minutes)} 이후에 퇴근할 수 있어요.`
+  }
+
+  const formatTime = (hours, minutes) => {
+    return `${hours < 10 ? '0' : ''}${hours}:${minutes < 10 ? '0' : ''}${minutes}`
   }
 
   const getTotalSavingMins = () => {
@@ -136,6 +215,35 @@
       }, 0)
 
     return totalRemainingMins() - lackTimes().totalLackMins - subtractedMinsInLackTime
+  }
+
+  const getDetailTableIndex = (targetText) => {
+    const detailTable = detailTableOrNull()
+    const ths = [...(detailTable?.querySelector('thead')?.querySelectorAll('th') ?? [])]
+    return ths.findIndex((th) => th.innerText === targetText)
+  }
+
+  const significantIndex = () => {
+    return getDetailTableIndex('특이사항')
+  }
+
+  const dateIndex = () => {
+    return getDetailTableIndex('일자')
+  }
+
+  const clockInTimeIndex = () => {
+    return getDetailTableIndex('출근시간')
+  }
+
+  const workingDayTrs = () => {
+    const detailTable = detailTableOrNull()
+    const bodyTrs = [...(detailTable?.querySelector('tbody')?.querySelectorAll('tr') ?? [])]
+    // 쉬는날은 빨간 글씨 부여를 위해 span으로 텍스트를 감싸서 firstElementChild가 있으므로 그게 없다면 근무일임
+    return bodyTrs.filter((tr) => !tr.childNodes[dateIndex()]?.firstElementChild)
+  }
+
+  const totalWorkingDaysCount = () => {
+    return workingDayTrs().length
   }
 
   const remainingWorkingDayTrs = () => {
@@ -156,34 +264,6 @@
     return workingDayTrs().filter(
       (tr) => tr.childNodes[significantIndex()]?.innerText === '재택근무',
     ).length
-  }
-
-  const significantIndex = () => {
-    const detailTable = detailTableOrNull()
-    const ths = [...(detailTable?.querySelector('thead')?.querySelectorAll('th') ?? [])]
-    return ths.findIndex((th) => th.innerText === '특이사항')
-  }
-
-  const dateIndex = () => {
-    const detailTable = detailTableOrNull()
-    const ths = [...(detailTable?.querySelector('thead')?.querySelectorAll('th') ?? [])]
-    return ths.findIndex((th) => th.innerText === '일자')
-  }
-
-  const workingDayTrs = () => {
-    const detailTable = detailTableOrNull()
-    const bodyTrs = [...(detailTable?.querySelector('tbody')?.querySelectorAll('tr') ?? [])]
-    // 쉬는날은 빨간 글씨 부여를 위해 span으로 텍스트를 감싸서 firstElementChild가 있으므로 그게 없다면 근무일임
-    return bodyTrs.filter((tr) => !tr.childNodes[dateIndex()]?.firstElementChild)
-  }
-
-  const totalWorkingDayCount = () => {
-    return workingDayTrs().length
-  }
-
-  const lackTimeText = () => {
-    const { lackHours, lackMins } = lackTimes()
-    return `총 근무시간이 ${timeText(lackHours, lackMins)} 남았어요.`
   }
 
   const renderRow = ({ title, content }) => {
@@ -257,14 +337,14 @@
               <div style="font-size: 18px; font-weight: 700; line-height: 28px;">${dateText()}</div>
             </time>
             <div style="display: grid; grid-auto-rows: minmax(32px, auto); grid-template-columns: 106px 1fr; border-top: 1px solid #CCC; border-left: 1px solid #CCC; font-size: 14px;">
-              ${renderRow({ title: '총 근무일', content: `${totalWorkingDayCount()}일` })}
+              ${renderRow({ title: '총 근무일', content: `${totalWorkingDaysCount()}일` })}
               ${renderRow({ title: '남은 근무일', content: `${remainingWorkingDaysCount()}일` })}
               ${renderRow({ title: '남은 재택근무', content: `${wfhCountPerMonth - usedWfhCount()}일` })}
-              ${renderRow({ title: '내 현황', content: `${myStatusText()}` })}
-              ${renderRow({ title: '요약', content: `${summaryText()}` })}
-              ${renderRow({ title: '미달시간', content: `${lackTimeText()}` })}
+              ${renderRow({ title: '내 현황', content: `${myStatusLabel()}` })}
+              ${renderRow({ title: '요약', content: `${summaryLabel()}` })}
+              ${renderRow({ title: '미달시간', content: `${lackTimeLabel()}` })}
               ${(() => {
-                if (startOfToday().getTime() <= foundationDay().getTime()) {
+                if (currentPageDate().getFullYear() === new Date().getFullYear() && startOfToday().getTime() <= foundationDay().getTime()) {
                   return renderRow({ title: '창립기념일', content: 'SIA 창립기념일인 7월 2일은 쉬는 날이에요.' })
                 }
                 return ''
