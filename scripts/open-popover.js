@@ -160,10 +160,12 @@
   const summaryLabel = () => {
     if (remainingWorkingDaysCount() === 0) {
       return '이달의 근무가 끝났어요.'
-    } else if (remainingWorkingDaysCount() === 1) {
-      const label = summaryLabelForLastDayOfMonth()
-      if (label) {
-        return label
+    }
+
+    if (remainingWorkingDaysCount() === 1) {
+      const time = clockOutTimeForLastDayOfMonth()
+      if (time) {
+        return `오늘은 이달의 마지막 근무일입니다.\n${formatTime(time.hours, time.minutes)} 이후에 퇴근할 수 있어요.`
       }
     }
 
@@ -184,10 +186,10 @@
     return !timetxt ? '남은 근무시간이 없어요.' : `총 근무시간이 ${timetxt} 남았어요.`
   }
 
-  const summaryLabelForLastDayOfMonth = () => {
+  const clockOutTimeForLastDayOfMonth = () => {
     const clockInTime = clockInTimeOfTodayOrNull()
     if (!clockInTime) {
-      return ''
+      return null
     }
 
     const clockInMins = clockInTime.getHours() * MINUTES_PER_HOUR + clockInTime.getMinutes()
@@ -198,9 +200,8 @@
 
     const clockOutMins = startMins + minsForAdd + lackTimes().totalLackMins
     const clampedClockOutMins = Math.max(clockOutMins, CORE_TIME_END_HOUR * MINUTES_PER_HOUR)
-    const { hours, minutes } = parseMinutes(clampedClockOutMins)
 
-    return `${formatTime(hours, minutes)} 이후에 퇴근할 수 있어요.`
+    return parseMinutes(clampedClockOutMins)
   }
 
   const formatTime = (hours, minutes) => {
