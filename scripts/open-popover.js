@@ -10,8 +10,8 @@
   const CORE_TIME_END_HOUR = 15
 
   const title = '시아시간'
-  const popupId = `sia-time-popup-uxWd901md`
-  const closeBtnId = `sia-time-popup-close-btn-Idn1Zdk3`
+  const popoverId = `sia-time-popover-uxWd901md`
+  const closeBtnId = `sia-time-popover-close-btn-Idn1Zdk3`
   // 매달 제공되는 재택근무일수
   const wfhCountPerMonth = 2
 
@@ -273,19 +273,19 @@
             >${content}</div>`
   }
 
-  const clearOldPopup = () => {
-    const oldPopup = document.getElementById(popupId)
-    if (oldPopup) {
-      document.body.removeChild(oldPopup)
+  const clearOldPopover = () => {
+    const oldPopover = document.getElementById(popoverId)
+    if (oldPopover) {
+      document.body.removeChild(oldPopover)
     }
   }
 
-  const genContent = () => {
-    clearOldPopup()
+  const buildPopover = () => {
+    clearOldPopover()
 
-    const popupEl = new DOMParser().parseFromString(
+    const popoverEl = new DOMParser().parseFromString(
       `
-      <div id="${popupId}" style="position: absolute; top: 24px; right: 24px; z-index: 100000;">
+      <div id="${popoverId}" style="position: absolute; top: 24px; right: 24px; z-index: 100000;">
         <div
           style="
             width: 446px;
@@ -356,12 +356,12 @@
     `,
       'text/html',
     )
-    popupEl.getElementById(closeBtnId).addEventListener('click', clearOldPopup)
+    popoverEl.getElementById(closeBtnId).addEventListener('click', clearOldPopover)
 
-    document.body.appendChild(popupEl.body.firstChild)
+    document.body.appendChild(popoverEl.body.firstChild)
   }
 
-  const genPopupWhenReady = () => {
+  const openPopoverWhenReady = () => {
     const retry = 100
     let triedCount = 0
     const TOTAL_LOADING_UI_COUNT = 4
@@ -380,7 +380,7 @@
       }
 
       if (clickedMenu !== '근무시간집계현황') {
-        clearOldPopup()
+        clearOldPopover()
         clearInterval(intervalId)
         return
       }
@@ -405,13 +405,13 @@
         return
       }
 
-      searchBtn.removeEventListener('click', genPopupWhenReady)
-      searchBtn.addEventListener('click', genPopupWhenReady)
+      searchBtn.removeEventListener('click', openPopoverWhenReady)
+      searchBtn.addEventListener('click', openPopoverWhenReady)
 
-      genContent()
+      buildPopover()
       clearInterval(intervalId)
     }, 300)
   }
 
-  genPopupWhenReady()
+  openPopoverWhenReady()
 })()
