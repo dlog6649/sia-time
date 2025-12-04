@@ -12,8 +12,11 @@
   const title = '시아시간'
   const popoverId = `sia-time-popover-uxWd901md`
   const closeBtnId = `sia-time-popover-close-btn-Idn1Zdk3`
+  const todayOnlyCheckboxId = `sia-time-popover-today-only-checkbox`
+  const todayOnlyStorageKey = 'sia-time-today-only-enabled'
   // 매달 제공되는 재택근무일수
   const wfhCountPerMonth = 2
+  let useTodayOnly = localStorage.getItem(todayOnlyStorageKey) === 'true'
 
   const convertSignificantToMins = (significant) => {
     const dayRegexp =
@@ -34,6 +37,14 @@
     return 0
   }
 
+  const endOfMonth = (date = new Date()) => {
+    const y = date.getFullYear()
+    const m = date.getMonth()
+    const end = new Date(y, m + 1, 0)
+    end.setHours(23, 59, 59, 999)
+    return end
+  }
+
   const getBusinessTripMinutes = (text) => {
     const match = text.match(/(\d{1,2}):(\d{2})\s*~\s*(\d{1,2}):(\d{2})/)
     if (!match) {
@@ -52,17 +63,19 @@
     return duration - overlap
   }
 
-  const endOfMonth = (date = new Date()) => {
-    const y = date.getFullYear()
-    const m = date.getMonth()
-    const end = new Date(y, m + 1, 0)
-    end.setHours(23, 59, 59, 999)
-    return end
-  }
-
   const startOfToday = (date = new Date()) => {
     date.setHours(0, 0, 0, 0)
     return date
+  }
+
+  const endOfToday = (date = new Date()) => {
+    date.setHours(23, 59, 59, 999)
+    return date
+  }
+
+  const dateOfTr = (tr) => {
+    const date = new Date(tr.childNodes[dateIndex()]?.innerText)
+    return Number.isNaN(date.getTime()) ? null : date
   }
 
   // 창립기념일 7/2
@@ -209,11 +222,18 @@
   }
 
   const getTotalSavingMins = () => {
-    const subtractedMinsInLackTime = remainingWorkingDayTrs().reduce((acc, tr) => {
-        const significants = tr.childNodes[significantIndex()]?.innerText.split('\n')
-        const mins = significants.reduce((acc, sig) => acc + convertSignificantToMins(sig), 0)
-        return acc + mins
-      }, 0)
+    const targetTrs = useTodayOnly
+      ? remainingWorkingDayTrs().filter((tr) => {
+          const date = dateOfTr(tr)
+          return date && date.getTime() <= endOfToday().getTime()
+        })
+      : remainingWorkingDayTrs()
+
+    const subtractedMinsInLackTime = targetTrs.reduce((acc, tr) => {
+      const significants = tr.childNodes[significantIndex()]?.innerText.split('\n')
+      const mins = significants.reduce((acc, sig) => acc + convertSignificantToMins(sig), 0)
+      return acc + mins
+    }, 0)
 
     return totalRemainingMins() - lackTimes().totalLackMins - subtractedMinsInLackTime
   }
@@ -243,14 +263,23 @@
     return bodyTrs.filter((tr) => !tr.childNodes[dateIndex()]?.firstElementChild)
   }
 
+  const workingDayTrsWithinRange = () => {
+    const endDate = useTodayOnly ? endOfToday() : endOfMonth()
+    return workingDayTrs().filter((tr) => {
+      const date = dateOfTr(tr)
+      return date && date.getTime() <= endDate.getTime()
+    })
+  }
+
   const totalWorkingDaysCount = () => {
     return workingDayTrs().length
   }
 
   const remainingWorkingDayTrs = () => {
-    return workingDayTrs().filter(
-      (tr) => new Date(tr.childNodes[dateIndex()]?.innerText).getTime() >= startOfToday().getTime(),
-    )
+    return workingDayTrs().filter((tr) => {
+      const date = dateOfTr(tr)
+      return date && date.getTime() >= startOfToday().getTime()
+    })
   }
 
   const remainingWorkingDaysCount = () => {
@@ -262,7 +291,8 @@
   }
 
   const usedWfhCount = () => {
-    return workingDayTrs().filter(
+    const targetTrs = useTodayOnly ? workingDayTrsWithinRange() : workingDayTrs()
+    return targetTrs.filter(
       (tr) => tr.childNodes[significantIndex()]?.innerText === '재택근무',
     ).length
   }
@@ -337,6 +367,12 @@
               </svg>
               <div style="font-size: 18px; font-weight: 700; line-height: 28px;">${dateText()}</div>
             </time>
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #424242;">
+              <input type="checkbox" id="${todayOnlyCheckboxId}" style="width: 14px; height: 14px;" ${
+                useTodayOnly ? 'checked' : ''
+              } />
+              오늘까지만 계산 (미래 일정 제외)
+            </label>
             <div style="display: grid; grid-auto-rows: minmax(32px, auto); grid-template-columns: 106px 1fr; border-top: 1px solid #CCC; border-left: 1px solid #CCC; font-size: 14px;">
               ${renderRow({ title: '총 근무일', content: `${totalWorkingDaysCount()}일` })}
               ${renderRow({ title: '남은 근무일', content: `${remainingWorkingDaysCount()}일` })}
@@ -360,6 +396,15 @@
     popoverEl.getElementById(closeBtnId).addEventListener('click', clearOldPopover)
 
     document.body.appendChild(popoverEl.body.firstChild)
+
+    const todayOnlyCheckbox = document.getElementById(todayOnlyCheckboxId)
+    if (todayOnlyCheckbox) {
+      todayOnlyCheckbox.addEventListener('change', (event) => {
+        useTodayOnly = event.target.checked
+        localStorage.setItem(todayOnlyStorageKey, String(useTodayOnly))
+        buildPopover()
+      })
+    }
   }
 
   const openPopoverWhenReady = () => {
