@@ -65,6 +65,26 @@
     return date
   }
 
+  const parseDateText = (text) => {
+    if (!text) {
+      return null
+    }
+
+    const date = new Date(text)
+    return Number.isNaN(date.getTime()) ? null : date
+  }
+
+  const dateOfTr = (tr) => {
+    return parseDateText(tr.childNodes[dateIndex()]?.innerText)
+  }
+
+  const significantLines = (tr) => {
+    return (tr.childNodes[significantIndex()]?.innerText ?? '')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+  }
+
   // 창립기념일 7/2
   const foundationDay = (date = new Date()) => {
     date.setMonth(6, 2)
@@ -101,10 +121,11 @@
     const lackTimeIdx = [
       ...(summaryTable?.querySelector('thead')?.querySelectorAll('th') ?? []),
     ].findIndex((th) => th.innerText === '미달시간')
-    const lackTimeTxt =
-      summaryTable?.querySelector('tbody')?.querySelector('tr')?.childNodes[lackTimeIdx]
-        ?.innerText ?? ''
-    const [lackHours, lackMins] = lackTimeTxt.split(':').map(Number)
+    const lackTimeTxt = lackTimeIdx < 0
+      ? ''
+      : summaryTable?.querySelector('tbody')?.querySelector('tr')?.childNodes[lackTimeIdx]
+          ?.innerText ?? ''
+    const [lackHours = 0, lackMins = 0] = lackTimeTxt.split(':').map(Number)
 
     return { lackMins: lackMins, lackHours: lackHours, totalLackMins: lackHours * MINUTES_PER_HOUR + lackMins }
   }
@@ -112,8 +133,12 @@
   // 오늘 출근한 시간
   const clockInTimeOfTodayOrNull = () => {
     const todayTr = workingDayTrs().find((tr) => {
-      const date = new Date(tr.childNodes[dateIndex()]?.innerText)
+      const date = dateOfTr(tr)
       const now = new Date()
+      if (!date) {
+        return false
+      }
+
       return (
         date.getFullYear() === now.getFullYear() &&
         date.getMonth() === now.getMonth() &&
@@ -136,7 +161,7 @@
   const currentPageDate = () => {
     const detailTable = detailTableOrNull()
     const bodyTrs = [...(detailTable?.querySelector('tbody')?.querySelectorAll('tr') ?? [])]
-    return new Date(bodyTrs[0]?.childNodes[dateIndex()]?.innerText)
+    return dateOfTr(bodyTrs[0]) ?? new Date()
   }
 
   const parseMinutes = (mins) => {
@@ -210,7 +235,7 @@
 
   const getTotalSavingMins = () => {
     const subtractedMinsInLackTime = remainingWorkingDayTrs().reduce((acc, tr) => {
-        const significants = tr.childNodes[significantIndex()]?.innerText.split('\n')
+        const significants = significantLines(tr)
         const mins = significants.reduce((acc, sig) => acc + convertSignificantToMins(sig), 0)
         return acc + mins
       }, 0)
@@ -248,9 +273,10 @@
   }
 
   const remainingWorkingDayTrs = () => {
-    return workingDayTrs().filter(
-      (tr) => new Date(tr.childNodes[dateIndex()]?.innerText).getTime() >= startOfToday().getTime(),
-    )
+    return workingDayTrs().filter((tr) => {
+      const date = dateOfTr(tr)
+      return date && date.getTime() >= startOfToday().getTime()
+    })
   }
 
   const remainingWorkingDaysCount = () => {
