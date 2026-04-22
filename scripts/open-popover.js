@@ -15,27 +15,44 @@
   // 매달 제공되는 재택근무일수
   const wfhCountPerMonth = 2
 
+  const significantPolicies = [
+    {
+      test: (significant) => (
+        /(재택근무|연차|휴가|공가|병가|휴직|결혼|회갑|출산|사망|탈상|예비군|훈련소)/.test(significant) ||
+        significant === '기타'
+      ),
+      minutes: WORKING_HOURS_PER_DAY * MINUTES_PER_HOUR,
+      subtractFromLackTime: true,
+    },
+    {
+      test: (significant) => /(반차|건강검진|백신접종|기타\(반일\))/.test(significant),
+      minutes: HALF_WORKING_HOURS_PER_DAY * MINUTES_PER_HOUR,
+      subtractFromLackTime: true,
+    },
+    {
+      test: (significant) => significant.startsWith('출장'),
+      minutes: (significant) => getBusinessTripMinutes(significant),
+      subtractFromLackTime: false,
+    },
+  ]
+
+  const significantPolicyOrNull = (significant) => {
+    return significantPolicies.find((policy) => policy.test(significant)) ?? null
+  }
+
   const convertSignificantToMins = (significant) => {
-    const dayRegexp =
-      /(재택근무|연차|휴가|공가|병가|휴직|결혼|회갑|출산|사망|탈상|예비군|훈련소)/g
-    if (dayRegexp.test(significant) || significant === '기타') {
-      return WORKING_HOURS_PER_DAY * MINUTES_PER_HOUR
+    const policy = significantPolicyOrNull(significant)
+    if (!policy) {
+      return 0
     }
 
-    const halfDayRegexp = /(반차|건강검진|백신접종|기타\(반일\))/g
-    if (halfDayRegexp.test(significant)) {
-      return HALF_WORKING_HOURS_PER_DAY * MINUTES_PER_HOUR
-    }
-
-    if (significant.startsWith('출장')) {
-      return getBusinessTripMinutes(significant)
-    }
-
-    return 0
+    return typeof policy.minutes === 'function'
+      ? policy.minutes(significant)
+      : policy.minutes
   }
 
   const shouldSubtractSignificantFromLackTime = (significant) => {
-    return !significant.startsWith('출장')
+    return significantPolicyOrNull(significant)?.subtractFromLackTime ?? false
   }
 
   const getBusinessTripMinutes = (text) => {
