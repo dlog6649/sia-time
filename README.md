@@ -1,11 +1,26 @@
-# 시아시간
-시아시간은 크롬 확장프로그램으로 SIA groupware의 인사/근태 > 근태현황 > 근무시간집계현황에서 추가적인 근태정보를 제공해줘요.
+# sia-time repo
 
-## 설치
-[크롬 웹스토어](https://chromewebstore.google.com/detail/%EC%8B%9C%EC%95%84%EC%8B%9C%EA%B0%84/ailbmhgjkpgpgbkmgdhcgoiagkdggaoi?authuser=0&hl=ko)
+이 저장소는 `시아시간` 크롬 확장프로그램의 소스와 빌드 구성을 관리한다.
 
-## 스크린샷
+확장프로그램 사용자용 README 는 [public/README.md](/Users/hbim/dev/repositories/sia-time/public/README.md) 에 있다.
 
-![sia-time](https://github.com/user-attachments/assets/cedf7129-eb7c-4efe-9e4c-27bc495f77fd)
+## 개발 구조
 
-![sia-time2](https://github.com/user-attachments/assets/07fa704d-c312-4315-a8ed-469045f18d93)
+- `src/`: TypeScript 소스
+- `public/`: 정적 자산과 확장프로그램 배포용 문서
+- `dist/`: 빌드 결과물
+
+크롬 확장프로그램은 `dist/` 폴더를 로드해서 사용한다.
+
+## 빌드
+
+```bash
+pnpm install
+pnpm build
+```
+
+## 타입 체크
+
+```bash
+pnpm type
+```
