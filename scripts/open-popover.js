@@ -34,6 +34,10 @@
     return 0
   }
 
+  const shouldSubtractSignificantFromLackTime = (significant) => {
+    return !significant.startsWith('출장')
+  }
+
   const getBusinessTripMinutes = (text) => {
     const match = text.match(/(\d{1,2}):(\d{2})\s*~\s*(\d{1,2}):(\d{2})/)
     if (!match) {
@@ -235,8 +239,9 @@
 
   const getTotalSavingMins = () => {
     const subtractedMinsInLackTime = remainingWorkingDayTrs().reduce((acc, tr) => {
-        const significants = significantLines(tr)
-        const mins = significants.reduce((acc, sig) => acc + convertSignificantToMins(sig), 0)
+        const mins = significantLines(tr)
+          .filter(shouldSubtractSignificantFromLackTime)
+          .reduce((acc, sig) => acc + convertSignificantToMins(sig), 0)
         return acc + mins
       }, 0)
 
