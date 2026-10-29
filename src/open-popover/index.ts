@@ -60,22 +60,59 @@
     return significantPolicyOrNull(significant)?.subtractFromLackTime ?? false
   }
 
-  const getBusinessTripMinutes = (text: string): number => {
-    const match = text.match(/(\d{1,2}):(\d{2})\s*~\s*(\d{1,2}):(\d{2})/)
-    if (!match) {
+  type TimeRange = { start: number, end: number }
+
+  const clockMinsOrNull = (text: string): number | null => {
+    const match = text.trim().match(/^(\d{1,2}):([0-5]\d)$/)
+    if (!match || Number(match[1]) > 23) {
+      return null
+    }
+
+    return Number(match[1]) * MINUTES_PER_HOUR + Number(match[2])
+  }
+
+  const durationMinsOrNull = (text: string): number | null => {
+    if (!text.trim()) {
       return 0
     }
 
-    const [, sh, sm, eh, em] = match.map(Number)
-    const start = sh * MINUTES_PER_HOUR + sm
-    const end = eh * MINUTES_PER_HOUR + em
-    const duration = end - start
+    const match = text.trim().match(/^(\d+):([0-5]\d)$/)
+    if (!match) {
+      return null
+    }
+
+    const mins = Number(match[1]) * MINUTES_PER_HOUR + Number(match[2])
+    return Number.isSafeInteger(mins) ? mins : null
+  }
+
+  const businessTripRangeOrNull = (text: string): TimeRange | null => {
+    const match = text.match(/^출장\s*\(\s*(\d{1,2}:\d{2})\s*~\s*(\d{1,2}:\d{2})\s*\)/)
+    if (!match) {
+      return null
+    }
+
+    const start = clockMinsOrNull(match[1])
+    const end = clockMinsOrNull(match[2])
+    return start !== null && end !== null && end > start ? { start, end } : null
+  }
+
+  const workingMinsInRange = (range: TimeRange): number => {
+    const start = Math.max(range.start, WORKING_START_HOUR * MINUTES_PER_HOUR)
+    const end = Math.min(range.end, WORKING_END_HOUR * MINUTES_PER_HOUR)
+    if (end <= start) {
+      return 0
+    }
 
     const lunchStart = LUNCH_START_HOUR * MINUTES_PER_HOUR
     const lunchEnd = LUNCH_END_HOUR * MINUTES_PER_HOUR
     const overlap = Math.max(0, Math.min(end, lunchEnd) - Math.max(start, lunchStart))
 
-    return duration - overlap
+    return end - start - overlap
+  }
+
+  const getBusinessTripMinutes = (text: string): number => {
+    const range = businessTripRangeOrNull(text)
+    return range ? workingMinsInRange(range) : 0
   }
 
   const endOfMonth = (date = new Date()): Date => {
@@ -92,17 +129,20 @@
   }
 
   const parseDateText = (text: string | undefined): Date | null => {
-    if (!text) {
+    const match = text?.trim().match(/^(\d{4})-(\d{2})-(\d{2})(?:\([^)]*\))?$/)
+    if (!match) {
       return null
     }
 
-    const date = new Date(text)
-    return Number.isNaN(date.getTime()) ? null : date
+    const [, year, month, day] = match.map(Number)
+    const date = new Date(year, month - 1, day)
+    return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day
+      ? date
+      : null
   }
 
   const childElementText = (tr: HTMLTableRowElement, index: number): string => {
-    const child = tr.childNodes[index]
-    return child instanceof HTMLElement ? child.innerText : ''
+    return tr.cells[index]?.innerText ?? ''
   }
 
   const tableRows = (table: HTMLDivElement | null): HTMLTableRowElement[] => {
@@ -250,9 +290,13 @@
   }
 
   const lackTimeLabel = (): string => {
-    const { lackHours, lackMins } = lackTimes()
-    const timetxt = timeText(lackHours, lackMins)
-    return !timetxt ? '남은 근무시간이 없어요.' : `총 근무시간이 ${timetxt} 남았어요.`
+    const mins = getEffectiveLackMins()
+    if (mins <= 0) {
+      return '남은 근무시간이 없어요.'
+    }
+
+    const { hours, minutes } = parseMinutes(mins)
+    return `총 근무시간이 ${timeText(hours, minutes)} 남았어요.`
   }
 
   const clockOutTimeForLastDayOfMonth = (): { hours: number, minutes: number } | null => {
@@ -267,7 +311,7 @@
     const lunchEnd = LUNCH_END_HOUR * MINUTES_PER_HOUR
     const minsForAdd = Math.max(0, lunchEnd - Math.max(startMins, lunchStart))
 
-    const clockOutMins = startMins + minsForAdd + lackTimes().totalLackMins
+    const clockOutMins = startMins + minsForAdd + Math.max(0, getEffectiveLackMins())
     const clampedClockOutMins = Math.max(clockOutMins, CORE_TIME_END_HOUR * MINUTES_PER_HOUR)
 
     return parseMinutes(clampedClockOutMins)
@@ -285,7 +329,56 @@
         return acc + mins
       }, 0)
 
-    return totalRemainingMins() - lackTimes().totalLackMins - subtractedMinsInLackTime
+    return totalRemainingMins() - getEffectiveLackMins() - subtractedMinsInLackTime
+  }
+
+  const getPendingBusinessTripMins = (): number => {
+    const statusIdx = getDetailTableIndex('근태구분')
+    const recognizedIdx = getDetailTableIndex('소정근로 인정시간')
+    const clockInIdx = clockInTimeIndex()
+    const clockOutIdx = getDetailTableIndex('퇴근시간')
+    if ([statusIdx, recognizedIdx, clockInIdx, clockOutIdx, dateIndex(), significantIndex()].some((index) => index < 0)) {
+      return 0
+    }
+
+    const today = startOfToday().getTime()
+    return workingDayTrs().reduce((total, tr) => {
+      const date = dateOfTr(tr)
+      // '정상'인 출장 행은 승인 완료다. 그 외 명시된 근태 상태도 추측해서 보완하지 않는다.
+      if (!date || date.getTime() >= today || childElementText(tr, statusIdx).trim() !== '') {
+        return total
+      }
+
+      const tripLines = significantLines(tr).filter((line) => line.startsWith('출장'))
+      if (tripLines.length === 0) {
+        return total
+      }
+
+      const tripRanges = tripLines.map(businessTripRangeOrNull)
+      const clockInText = childElementText(tr, clockInIdx).trim()
+      const clockOutText = childElementText(tr, clockOutIdx).trim()
+      const clockIn = clockMinsOrNull(clockInText)
+      const clockOut = clockMinsOrNull(clockOutText)
+      const recognized = durationMinsOrNull(childElementText(tr, recognizedIdx))
+      if (
+        tripRanges.some((range) => range === null) ||
+        (clockInText !== '' && clockIn === null) ||
+        (clockOutText !== '' && clockOut === null) ||
+        (clockIn !== null && clockOut !== null && clockOut < clockIn) ||
+        recognized === null
+      ) {
+        return total
+      }
+
+      const start = Math.min(...tripRanges.map((range) => range.start), clockIn ?? Infinity)
+      const end = Math.max(...tripRanges.map((range) => range.end), clockOut ?? -Infinity)
+      const calculated = workingMinsInRange({ start, end })
+      return total + Math.max(0, calculated - recognized)
+    }, 0)
+  }
+
+  const getEffectiveLackMins = (): number => {
+    return lackTimes().totalLackMins - getPendingBusinessTripMins()
   }
 
   const getDetailTableIndex = (targetText: string): number => {
@@ -311,8 +404,7 @@
     const bodyTrs = tableRows(detailTable)
     // 쉬는날은 빨간 글씨 부여를 위해 span으로 텍스트를 감싸서 firstElementChild가 있으므로 그게 없다면 근무일임
     return bodyTrs.filter((tr) => {
-      const child = tr.childNodes[dateIndex()]
-      return !(child instanceof Element && child.firstElementChild)
+      return !tr.cells[dateIndex()]?.firstElementChild
     })
   }
 
