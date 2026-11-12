@@ -11,6 +11,8 @@
 
   const title = '시아시간'
   const popoverId = `sia-time-popover-uxWd901md`
+  const periodSelectId = `${popoverId}-period`
+  const weekSelectId = `${popoverId}-week`
   const closeBtnId = `sia-time-popover-close-btn-Idn1Zdk3`
   // 매달 제공되는 재택근무일수
   const wfhCountPerMonth = 2
@@ -100,9 +102,8 @@
     return Number.isNaN(date.getTime()) ? null : date
   }
 
-  const childElementText = (tr: HTMLTableRowElement, index: number): string => {
-    const child = tr.childNodes[index]
-    return child instanceof HTMLElement ? child.innerText : ''
+  const childElementText = (tr: HTMLTableRowElement | undefined, index: number): string => {
+    return tr?.cells[index]?.innerText ?? ''
   }
 
   const tableRows = (table: HTMLDivElement | null): HTMLTableRowElement[] => {
@@ -118,16 +119,18 @@
     return lastChild instanceof CharacterData ? lastChild.data : null
   }
 
-  const dateOfTr = (tr: HTMLTableRowElement): Date | null => {
+  const dateOfTr = (tr: HTMLTableRowElement | undefined): Date | null => {
     return parseDateText(childElementText(tr, dateIndex()))
   }
 
-  const significantLines = (tr: HTMLTableRowElement): string[] => {
-    return (childElementText(tr, significantIndex()) ?? '')
+  const splitSignificantLines = (text: string): string[] => {
+    return text
       .split('\n')
       .map((line) => line.trim())
       .filter(Boolean)
   }
+
+  const significantLines = (tr: HTMLTableRowElement): string[] => splitSignificantLines(childElementText(tr, significantIndex()))
 
   // 창립기념일 7/2
   const foundationDay = (date = new Date()): Date => {
@@ -212,8 +215,7 @@
     return { hours: Math.floor(mins / MINUTES_PER_HOUR), minutes: mins % MINUTES_PER_HOUR }
   }
 
-  const myStatusLabel = (): string => {
-    const totalSavingMins = getTotalSavingMins()
+  const myStatusLabel = (totalSavingMins = getTotalSavingMins()): string => {
     if (totalSavingMins === 0) {
       return '저축한 시간이 없어요.'
     }
@@ -306,14 +308,14 @@
     return getDetailTableIndex('출근시간')
   }
 
+  // 그룹웨어는 휴일 날짜를 빨간색 span으로 감싼다.
+  const isWorkingDayCell = (cell: HTMLTableCellElement | undefined): boolean => {
+    return Boolean(cell && !cell.firstElementChild)
+  }
+
   const workingDayTrs = (): HTMLTableRowElement[] => {
-    const detailTable = detailTableOrNull()
-    const bodyTrs = tableRows(detailTable)
-    // 쉬는날은 빨간 글씨 부여를 위해 span으로 텍스트를 감싸서 firstElementChild가 있으므로 그게 없다면 근무일임
-    return bodyTrs.filter((tr) => {
-      const child = tr.childNodes[dateIndex()]
-      return !(child instanceof Element && child.firstElementChild)
-    })
+    const index = dateIndex()
+    return tableRows(detailTableOrNull()).filter((tr) => isWorkingDayCell(tr.cells[index]))
   }
 
   const totalWorkingDaysCount = (): number => {
@@ -341,6 +343,186 @@
     ).length
   }
 
+  type Week = {
+    start: number,
+    days: { date: Date, row: HTMLTableRowElement, working: boolean }[],
+  }
+
+  const weeklyDateOrNull = (text: string): Date | null => {
+    const match = /^(\d{4})-(\d{2})-(\d{2})(?:\s*\([^)]*\))?$/.exec(text.trim())
+    if (!match) {
+      return null
+    }
+
+    const [, year, month, day] = match.map(Number)
+    const date = new Date(year, month - 1, day)
+    return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day
+      ? date
+      : null
+  }
+
+  const shiftDate = (date: Date, days: number): Date => {
+    const shifted = new Date(date)
+    shifted.setDate(date.getDate() + days)
+    return shifted
+  }
+
+  const weekStart = (date: Date): number => shiftDate(date, -((date.getDay() + 6) % 7)).getTime()
+
+  const getWeeks = (): Week[] => {
+    const index = dateIndex()
+    const weeks = new Map<number, Week>()
+    for (const row of tableRows(detailTableOrNull())) {
+      const cell = row.cells[index]
+      const date = weeklyDateOrNull(cell?.innerText ?? '')
+      if (!date) {
+        continue
+      }
+
+      const start = weekStart(date)
+      let week = weeks.get(start)
+      if (!week) {
+        week = { start, days: [] }
+        weeks.set(start, week)
+      }
+      week.days.push({ date, row, working: isWorkingDayCell(cell) })
+    }
+
+    return [...weeks.values()].sort((a, b) => a.start - b.start)
+  }
+
+  const weekLabel = ({ start, days }: Week): string => {
+    const dates = days.map(({ date }) => date.getTime())
+    const first = Math.min(...dates)
+    const last = Math.max(...dates)
+    const shortDate = (timestamp: number): string => {
+      const date = new Date(timestamp)
+      return `${date.getMonth() + 1}/${date.getDate()}`
+    }
+    const range = first === last ? shortDate(first) : `${shortDate(first)}~${shortDate(last)}`
+    const partial = first !== start || last !== shiftDate(new Date(start), 6).getTime() || dates.length < 7
+    return partial ? `${range} · ${new Date(first).getMonth() + 1}월 조회 범위` : range
+  }
+
+  const recognizedMinutesOrNull = (text: string): number | null => {
+    if (text === '') {
+      return 0
+    }
+
+    const match = /^(\d+):([0-5]\d)$/.exec(text)
+    if (!match) {
+      return null
+    }
+
+    const minutes = Number(match[1]) * MINUTES_PER_HOUR + Number(match[2])
+    return Number.isSafeInteger(minutes) ? minutes : null
+  }
+
+  const weeklyLeaveMinutes = (attendance: string, specials: string): number => {
+    if (attendance.trim() !== '정상') {
+      return 0
+    }
+
+    return splitSignificantLines(specials).reduce((minutes, line) => {
+      if (line.includes('반차')) {
+        return minutes + HALF_WORKING_HOURS_PER_DAY * MINUTES_PER_HOUR
+      }
+      if (/연차|휴가|공가|병가|휴직/.test(line)) {
+        return minutes + WORKING_HOURS_PER_DAY * MINUTES_PER_HOUR
+      }
+      return minutes
+    }, 0)
+  }
+
+  const calculateWeek = (week: Week | undefined) => {
+    const recognizedIndex = getDetailTableIndex('소정근로 인정시간')
+    const attendanceIndex = getDetailTableIndex('근태구분')
+    const specialIndex = significantIndex()
+    if (!week || [recognizedIndex, attendanceIndex, specialIndex].includes(-1)) {
+      return null
+    }
+
+    const today = startOfToday()
+    const dayMinutes = WORKING_HOURS_PER_DAY * MINUTES_PER_HOUR
+    let workdays = 0
+    let remainingDays = 0
+    let availableDays = 0
+    let earnedMinutes = 0
+    let remainingCapacity = 0
+
+    for (const { date, row, working } of week.days) {
+      const recognizedCell = row.cells[recognizedIndex]
+      const attendanceCell = row.cells[attendanceIndex]
+      const specialCell = row.cells[specialIndex]
+      if (!recognizedCell || !attendanceCell || !specialCell) {
+        return null
+      }
+
+      if (date <= today) {
+        const recognized = recognizedMinutesOrNull(recognizedCell.innerText.trim())
+        if (recognized === null) {
+          return null
+        }
+        earnedMinutes += recognized
+      }
+
+      if (!working) {
+        continue
+      }
+
+      workdays++
+      const leave = Math.min(dayMinutes, weeklyLeaveMinutes(attendanceCell.innerText, specialCell.innerText))
+      if (date < today) {
+        earnedMinutes += leave
+      } else {
+        remainingDays++
+        remainingCapacity += dayMinutes - leave
+        if (leave < dayMinutes) {
+          availableDays++
+        }
+      }
+    }
+
+    const saving = earnedMinutes - (workdays - remainingDays) * dayMinutes
+    return {
+      workdays,
+      remainingDays,
+      availableDays,
+      target: workdays * dayMinutes,
+      saving,
+      shortage: Math.max(0, remainingCapacity - saving),
+    }
+  }
+
+  const renderWeekRows = (week: Week | undefined): string => {
+    const totals = calculateWeek(week)
+    if (!totals) {
+      return renderRow({ title: '요약', content: '주간 집계에 필요한 일별 근태 데이터가 없어요.' })
+    }
+
+    const { workdays, remainingDays, availableDays, target, saving, shortage } = totals
+    const durationText = (total: number): string => {
+      const { hours, minutes } = parseMinutes(total)
+      return timeText(hours, minutes) || '0분'
+    }
+    const lackText = shortage > 0 ? `총 근무시간이 ${durationText(shortage)} 남았어요.` : '남은 근무시간이 없어요.'
+    let summary = '조회 범위에 남은 근무 일정이 없어요.'
+    if (shortage === 0) {
+      summary = '주간 목표를 채웠어요.'
+    } else if (availableDays > 0) {
+      summary = `남은 근무일에 하루 평균 ${durationText(Math.ceil(shortage / availableDays))}씩 근무하면 돼요.`
+    }
+
+    return [
+      renderRow({ title: '총 근무일', content: `${workdays}일` }),
+      renderRow({ title: '남은 근무일', content: `${remainingDays}일` }),
+      renderRow({ title: '주간 목표', content: durationText(target) }),
+      renderRow({ title: '내 현황', content: myStatusLabel(saving) }),
+      renderRow({ title: '요약', content: summary }),
+      renderRow({ title: '미달시간', content: lackText }),
+    ].join('')
+  }
+
   const renderRow = ({ title, content }: { title: string, content: string }): string => {
     return `<div style="background-color: #F5F5F5; display: flex; align-items: center; padding: 4px 8px; border-right: 1px solid #CCC; border-bottom: 1px solid #CCC;"
             >${title}</div>
@@ -356,7 +538,16 @@
   }
 
   const buildPopover = (): void => {
+    const oldPopover = document.getElementById(popoverId)
+    const previousPeriod = oldPopover?.querySelector<HTMLSelectElement>(`#${periodSelectId}`)?.value
+    const previousWeek = oldPopover?.querySelector<HTMLSelectElement>(`#${weekSelectId}`)?.value
     clearOldPopover()
+
+    const weeks = getWeeks()
+    const todayWeekStart = weekStart(startOfToday())
+    const selectedWeek = weeks.find((week) => String(week.start) === previousWeek)
+      ?? weeks.filter((week) => week.start <= todayWeekStart).at(-1)
+      ?? weeks[0]
 
     const popoverEl = new DOMParser().parseFromString(
       `
@@ -411,7 +602,22 @@
               </svg>
               <div style="font-size: 18px; font-weight: 700; line-height: 28px;">${dateText()}</div>
             </time>
-            <div style="display: grid; grid-auto-rows: minmax(32px, auto); grid-template-columns: 106px 1fr; border-top: 1px solid #CCC; border-left: 1px solid #CCC; font-size: 14px;">
+            <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 12px; font-size: 14px;">
+              <label for="${periodSelectId}">
+                보기 단위
+                <select id="${periodSelectId}">
+                  <option value="month">월간</option>
+                  <option value="week">주간</option>
+                </select>
+              </label>
+              <label for="${weekSelectId}" hidden>
+                주간 날짜
+                <select id="${weekSelectId}">
+                  ${weeks.map((week) => `<option value="${week.start}">${weekLabel(week)}</option>`).join('')}
+                </select>
+              </label>
+            </div>
+            <div data-sia-time-rows style="display: grid; grid-auto-rows: minmax(32px, auto); grid-template-columns: 106px 1fr; border-top: 1px solid #CCC; border-left: 1px solid #CCC; font-size: 14px;">
               ${renderRow({ title: '총 근무일', content: `${totalWorkingDaysCount()}일` })}
               ${renderRow({ title: '남은 근무일', content: `${remainingWorkingDaysCount()}일` })}
               ${renderRow({ title: '남은 재택근무', content: `${wfhCountPerMonth - usedWfhCount()}일` })}
@@ -431,10 +637,33 @@
     `,
       'text/html',
     )
-    const closeBtn = popoverEl.getElementById(closeBtnId)
-    if (closeBtn instanceof HTMLButtonElement) {
-      closeBtn.addEventListener('click', clearOldPopover)
+    popoverEl.getElementById(closeBtnId)?.addEventListener('click', clearOldPopover)
+
+    const periodSelect = popoverEl.querySelector<HTMLSelectElement>(`#${periodSelectId}`)
+    const weekSelect = popoverEl.querySelector<HTMLSelectElement>(`#${weekSelectId}`)
+    const rows = popoverEl.querySelector('[data-sia-time-rows]')
+    const weekLabelElement = weekSelect?.parentElement
+    if (!periodSelect || !weekSelect || !rows || !weekLabelElement) {
+      return
     }
+
+    const monthlyRows = rows.innerHTML
+    const updatePeriod = () => {
+      const weekly = periodSelect.value === 'week'
+      weekLabelElement.hidden = !weekly || weeks.length === 0
+      const week = weeks.find(({ start }) => String(start) === weekSelect.value)
+      rows.innerHTML = weekly ? renderWeekRows(week) : monthlyRows
+    }
+
+    if (selectedWeek) {
+      weekSelect.value = String(selectedWeek.start)
+    }
+    if (previousPeriod === 'week') {
+      periodSelect.value = previousPeriod
+      updatePeriod()
+    }
+    periodSelect.addEventListener('change', updatePeriod)
+    weekSelect.addEventListener('change', updatePeriod)
 
     const firstChild = popoverEl.body.firstChild
     if (firstChild) {

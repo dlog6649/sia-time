@@ -15,7 +15,7 @@
 - 요약
 - 미달시간
 
-핵심 구현은 [src/open-popover/index.ts](../src/open-popover/index.ts)에 있다. 그룹웨어 관찰 근거는 [그룹웨어 동작과 계산 규칙](GROUPWARE_BEHAVIOR.md)에 정리한다.
+핵심 구현은 [src/open-popover/index.ts](../src/open-popover/index.ts)에 있다. 그룹웨어 관찰 근거와 주간 계산 규칙은 [그룹웨어 동작과 계산 규칙](GROUPWARE_BEHAVIOR.md)에 정리한다.
 
 ## 동작 구조
 

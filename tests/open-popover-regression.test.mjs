@@ -1,15 +1,13 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
-import path from 'node:path'
 import test from 'node:test'
 import { JSDOM } from 'jsdom'
 
-const workspaceRoot = '/Users/hbim/dev/repositories/sia-time'
-const fixturePath = path.join(workspaceRoot, 'tests/fixtures/scratch_41.html')
-const rootScriptPath = path.join(workspaceRoot, 'scripts/open-popover.js')
-const distScriptPath = path.join(workspaceRoot, 'dist/scripts/open-popover.js')
+const fixturePath = new URL('./fixtures/scratch_41.html', import.meta.url)
+const rootScriptPath = new URL('../scripts/open-popover.js', import.meta.url)
+const distScriptPath = new URL('../dist/scripts/open-popover.js', import.meta.url)
 const popoverId = 'sia-time-popover-uxWd901md'
-const fixedNow = new Date('2026-04-22T09:00:00+09:00')
+const fixedNow = new Date(2026, 3, 22, 9)
 
 const installInnerTextShim = (window) => {
   if ('innerText' in window.HTMLElement.prototype) {
@@ -80,6 +78,7 @@ const setupWindow = async () => {
   contentDocument.open()
   contentDocument.write(fixtureHtml)
   contentDocument.close()
+  installInnerTextShim(iframe.contentWindow)
   ensureLoadingCount(contentDocument)
 
   return window
@@ -102,38 +101,76 @@ const waitForPopover = async (window) => {
 
 const extractRows = (popover) => {
   const cells = [...popover.querySelectorAll('main > div:last-child > div')]
-  const rows = []
+  const rows = {}
 
   for (let index = 0; index < cells.length; index += 2) {
-    const title = cells[index]?.textContent?.trim() ?? ''
-    const content = cells[index + 1]?.innerHTML.trim() ?? ''
-    rows.push({ title, content })
+    rows[cells[index].textContent.trim()] = cells[index + 1].textContent.trim()
   }
 
   return rows
 }
 
-const runScript = async (scriptPath) => {
+const runScript = async (scriptPath, verify) => {
   const [window, script] = await Promise.all([
     setupWindow(),
     readFile(scriptPath, 'utf8'),
   ])
 
-  window.eval(script)
-  const popover = await waitForPopover(window)
-
-  return {
-    html: popover.outerHTML,
-    rows: extractRows(popover),
+  try {
+    window.eval(script)
+    const popover = await waitForPopover(window)
+    return verify(window, popover)
+  } finally {
+    window.close()
   }
 }
 
-test('built open-popover script matches the original fixture output', async () => {
-  const [originalResult, builtResult] = await Promise.all([
-    runScript(rootScriptPath),
-    runScript(distScriptPath),
-  ])
+const selectOption = (window, select, value) => {
+  select.value = value
+  assert.equal(select.value, value)
+  select.dispatchEvent(new window.Event('change', { bubbles: true }))
+}
 
-  assert.deepEqual(builtResult.rows, originalResult.rows)
-  assert.equal(builtResult.html, originalResult.html)
+test('built popover preserves the monthly fixture output through weekly toggling', async () => {
+  const monthly = await runScript(rootScriptPath, (_, popover) => extractRows(popover))
+  assert.deepEqual(monthly, {
+    '총 근무일': '22일',
+    '남은 근무일': '7일',
+    '남은 재택근무': '1일',
+    '내 현황': '11시간 41분 대출했어요.',
+    '요약': '앞으로 하루에 9시간 40분씩 근무하면 돼요.',
+    '미달시간': '총 근무시간이 67시간 41분 남았어요.',
+    '창립기념일': 'SIA 창립기념일인 7월 2일은 쉬는 날이에요.',
+  })
+
+  await runScript(distScriptPath, (window, popover) => {
+    const period = window.document.getElementById(`${popoverId}-period`)
+    assert.equal(period.value, 'month')
+    assert.deepEqual(extractRows(popover), monthly)
+    selectOption(window, period, 'week')
+    assert.equal(extractRows(popover)['주간 목표'], '40시간')
+    selectOption(window, period, 'month')
+    assert.deepEqual(extractRows(popover), monthly)
+
+    window.document.getElementById('sia-time-popover-close-btn-Idn1Zdk3').click()
+    assert.equal(window.document.getElementById(popoverId), null)
+  })
+})
+
+test('weekly view defaults to this week and clips a month boundary to the loaded dates', async () => {
+  await runScript(distScriptPath, (window, popover) => {
+    const period = window.document.getElementById(`${popoverId}-period`)
+    const week = window.document.getElementById(`${popoverId}-week`)
+    selectOption(window, period, 'week')
+    assert.match(week.selectedOptions[0].textContent, /4\/20\s*~\s*4\/26/)
+    assert.equal(extractRows(popover)['남은 근무일'], '3일')
+    assert.equal(extractRows(popover)['미달시간'], '총 근무시간이 33시간 56분 남았어요.')
+
+    const lastWeek = [...week.options].find((option) => /4\/27\s*~\s*4\/30/.test(option.textContent))
+    assert.ok(lastWeek, 'April-only dates should be present in the last week')
+    selectOption(window, week, lastWeek.value)
+    assert.match(week.selectedOptions[0].textContent, /4월 조회 범위/)
+    assert.equal(extractRows(popover)['총 근무일'], '4일')
+    assert.equal(extractRows(popover)['주간 목표'], '32시간')
+  })
 })

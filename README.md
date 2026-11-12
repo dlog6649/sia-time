@@ -36,4 +36,4 @@ pnpm type
 pnpm test
 ```
 
-확장프로그램을 빌드한 뒤 보관 HTML을 사용해 빌드 결과와 기존 스크립트의 팝오버 출력을 비교한다. 회귀 테스트는 [테스트 파일](tests/open-popover-regression.test.mjs)에 지정된 저장소 절대 경로에서 샘플과 스크립트를 읽는다.
+확장프로그램을 빌드한 뒤 [보관 화면 회귀 테스트](tests/open-popover-regression.test.mjs)로 기존 월간 출력, 주간 보기 전환과 월 경계 집계를 검증한다.
